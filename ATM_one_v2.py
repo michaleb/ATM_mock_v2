@@ -1,30 +1,45 @@
+import os
 import random
+import database, helper
+from getpass import getpass
 from datetime import datetime
 
-#database = {} # Dictionary of user credentials
+
+timestamp = datetime.now().strftime("%m/%d/%Y - %H:%M:%S \n")
+user_auth_path = "data/auth_session/"
 
 def login():
     
-    accNum = int(input("\nPlease enter your account number "))
-    for account in database.keys():
-        if accNum == account:
+    accNum = input("\nPlease enter your account number ")
+    valid_account_number = helper.account_number_validation(accNum)
+
+    if valid_account_number:
+        user_acc_on_record = helper.account_number_exist(accNum)
+        if user_acc_on_record:
             passwdAttempts = 0
             while passwdAttempts < 3:
-                userPassword = input("Please enter your password ")
-                if database[account][3] == userPassword:
+                userPassword = getpass("Please enter your password ")
+                user = helper.authenticated_user(accNum, userPassword)
+                
+                if user:
                     passwdAttempts = 3
-                    print("\nWelcome! %s %s" %(database[account][0], database[account][1]))
-                    bankOperations(account)
+                    print("\nWelcome! %s %s" %(user[0], user[1]))
+                    
+                    # create login timestamp  file in auth_session folder
+                    f = open(user_auth_path + str(accNum) + ".txt", "w")
+                    f.write("Customer" + " " + user[0] + " " + user[1] + " " + "logged in at" + " " + timestamp)
+                    f.close()
+
+                    bankOperations(accNum)
                 else:    
                     print("Incorrect password. Please try again \n")
                     passwdAttempts += 1
             login()
         
-    print("Invalid account number. Please try again \n")
+    print("Invalid account number. Returning user to Welcome screen \n")
     init()
 
-    return         
-
+    
 
 def register():
 
@@ -36,80 +51,126 @@ def register():
     acc_balance = 0
 
     accountNum = genAccNum()
-    database[accountNum] = [first_name, last_name, email, password, acc_balance]
-    print("=======================================")
-    print("| Your account number is : %d |" %accountNum)
-    print("=======================================")
+    is_user_created = database.create(accountNum, first_name, last_name, email, password, acc_balance)
 
-    login()
+    if is_user_created:
 
-    return
+        print("=======================================")
+        print("| Your account number is : %d |" %accountNum)
+        print("======================================= \n")
 
+        login()
+
+    else:
+        print("Internal error!, Please try again")
+        register()
+ 
 
 def updateBalance(availableBalance, request):
     availableBalance += request
     return availableBalance
     
 
+def get_current_balance(acc):
+    return int(str.split(database.read(acc), ',')[4])
+
+
 def bankOperations(accountNum):
     
     print("\n These are the available options:\n")
     print("1. Withdrawal")
     print("2. Cash Deposit")
-    print("3. Exit")
+    print("3. Check Balance")
+    print("4. Log Out")
+    print("5. Exit")
 
-    accountBalance = database[accountNum][4]
+    accountBalance = get_current_balance(accountNum)
     selectedOption = input("\n Please select a number option: ")
+    
     if (selectedOption == "1"):
         
         print("You selected option %s" %selectedOption)
-        amount = int(input("How much would you like to withdraw: "))
-        print("Please wait system processing... \n")
+        amount = input("How much would you like to withdraw: ")
 
-        if (amount <= accountBalance):
-            amount *= -1
-            database[accountNum][4] = updateBalance(accountBalance, amount)
-            
-            print("Please take your cash...")
-            print("Your current balance is $ %s" %database[accountNum][4])
-            bankOperations(accountNum)
-        else:
-            print("Amount not available, Insufficient funds")
-            print("Please try again")
-            bankOperations(accountNum)
+        is_input_valid = helper.input_validation(amount)
+        
+        if is_input_valid:
+            amount = int(amount)
+            print("Please wait system processing... \n")
+
+            if (amount <= accountBalance):
+                amount *= -1
+                current_balance = updateBalance(accountBalance, amount)
+                database.update(accountNum, current_balance)
+                
+                print("Please take your cash...")
+                print("Your current balance is $ %s" %get_current_balance(accountNum))
+                bankOperations(accountNum)
+            else:
+                print("Amount not available, Insufficient funds")
+                print("Please try again")
+                bankOperations(accountNum)
+
+        else: 
+            print("\nInvalid amount entered, please try again \n")  
+            bankOperations(accountNum)          
     
     elif (selectedOption == "2"):
         
         print("You selected option %s" %selectedOption)
-        amount = int(input("Please enter your deposit amount: "))
-        print("Please wait processing... \n")
-        database[accountNum][4] = updateBalance(accountBalance, amount)
-        print("Your current  balance is $ %s" %database[accountNum][4])
-        bankOperations(accountNum)
+        amount = input("Please enter your deposit amount: ")
+
+        is_input_valid = helper.input_validation(amount)
+        
+        if is_input_valid:
+            amount = int(amount)
+            print("Please wait processing... \n")
+            current_balance = updateBalance(accountBalance, amount)
+            database.update(accountNum, current_balance)
+            print("Your current  balance is $ %s" %get_current_balance(accountNum))
+            bankOperations(accountNum)
+
+        else: 
+            print("\nInvalid amount entered, please try again \n")  
+            bankOperations(accountNum)  
     
     elif (selectedOption == "3"):
+
+        print("You selected option %s \n" %selectedOption)
+        print("Your current balance is $ %s" %get_current_balance(accountNum))
+        bankOperations(accountNum)    
+    
+    elif (selectedOption == "4"):
         
         print("You selected option %s \n" %selectedOption)
-        print("Thank you for banking with us. Good bye!")
-        init()
+        print("You are now logged out of the system")
+        
+        # delete login timestamp file from auth_sessions folder
+        os.remove(user_auth_path + str(accountNum) + ".txt")
+
+        login()
     
+    elif (selectedOption == "5"):
+        
+        print("Thank you for banking with us. Good bye!")
+
+        if ((user_auth_path + str(accountNum) + ".txt")):
+            os.remove(user_auth_path + str(accountNum) + ".txt")
+        exit()
+           
     else: 
         print("Invalid option, please try again \n") 
         bankOperations(accountNum)
 
-    return
+    
 
 def genAccNum():
-    validAccNum =  random.randrange(111111111, 999999999)
-    if (validAccNum % 11 != 0):
-        genAccNum() 
-    else:
-        return validAccNum
-           
+    return  random.randrange(1111111111, 9999999999) 
+    
 
 def init():
     
-    print(datetime.now().strftime("%m/%d/%Y - %H:%M:%S \n"))
+    print(timestamp)
     print("Welcome! to BankONE ATM \n") 
     
     accountOption = input("\nDo you have an account with us? (1 for yes, 2 for no)? ")
@@ -121,8 +182,6 @@ def init():
         print("Invalid option entered, Please try again") 
         init()    
     
-    return
-            
-
+              
 if __name__ == "__main__":
     init()
